@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频去水印工具 - AI自动化版</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: white;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d9ff, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .status-bar {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ef4444;
+        }
+
+        .status-dot.active {
+            background: #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .input-section {
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .input-group input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .input-group input:focus {
+            border-color: #00d9ff;
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+        }
+
+        .input-group input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .link-preview {
+            padding: 12px 15px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 8px;
+            color: #10b981;
+            font-size: 0.9rem;
+            display: none;
+            margin-bottom: 15px;
+        }
+
+        .link-preview.show {
+            display: block;
+        }
+
+        .options-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        .checkbox-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .checkbox-option:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .checkbox-option input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00d9ff, #7c3aed);
+            color: white;
+            flex: 1;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 217, 255, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .progress-section {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .progress-section.show {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00d9ff, #7c3aed);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+        }
+
+        .result-section {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .result-section.show {
+            display: block;
+        }
+
+        .result-card {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .result-title {
+            color: #10b981;
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .result-info {
+            margin-bottom: 15px;
+        }
+
+        .result-info p {
+            margin-bottom: 8px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .result-info strong {
+            color: white;
+        }
+
+        .video-preview {
+            width: 100%;
+            max-height: 400px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            margin-bottom: 15px;
+        }
+
+        .download-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-download {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            flex: 1;
+        }
+
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
+        }
+
+        .error-section {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .error-section.show {
+            display: block;
+        }
+
+        .error-card {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .error-title {
+            color: #ef4444;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .error-message {
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 15px;
+        }
+
+        .instructions {
+            margin-top: 30px;
+        }
+
+        .instructions h3 {
+            color: white;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+
+        .instructions ul {
+            list-style: none;
+        }
+
+        .instructions li {
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .instructions li:last-child {
+            border-bottom: none;
+        }
+
+        .step-number {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00d9ff, #7c3aed);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .platform-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .platform-btn {
+            padding: 10px 20px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .platform-btn.active {
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.2);
+        }
+
+        .platform-btn:hover {
+            border-color: #7c3aed;
+            background: rgba(124, 58, 237, 0.2);
+        }
+
+        .footer {
+            text-align: center;
+            padding: 30px 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 600px) {
+            .input-group {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .download-actions {
+                flex-direction: column;
+            }
+        }
+
+        .auto-badge {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 视频去水印工具 <span class="auto-badge">AI自动化</span></h1>
+            <p>一键解析抖音、B站、快手、豆包等平台视频，自动下载无需手动操作</p>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot active"></div>
+                <span>服务器运行中</span>
+            </div>
+            <div class="status-item">
+                <span>下载目录: <span id="downloadDir">-</span></span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="platform-buttons">
+                <button class="platform-btn active" data-platform="auto">
+                    <span>🔄</span> 自动识别
+                </button>
+                <button class="platform-btn" data-platform="douyin">
+                    <span>🎵</span> 抖音
+                </button>
+                <button class="platform-btn" data-platform="bilibili">
+                    <span>📺</span> B站
+                </button>
+                <button class="platform-btn" data-platform="kuaishou">
+                    <span>👻</span> 快手
+                </button>
+                <button class="platform-btn" data-platform="doubao">
+                    <span>🎯</span> 豆包
+                </button>
+            </div>
+
+            <div class="input-section">
+                <div class="input-group">
+                    <input type="text" id="videoUrl" placeholder="粘贴视频分享链接，支持整段文字粘贴..." />
+                    <button class="btn btn-primary" id="parseBtn">
+                        <span>🔍</span>
+                        <span>解析视频</span>
+                    </button>
+                </div>
+
+                <div class="link-preview" id="linkPreview"></div>
+
+                <div class="options-row">
+                    <label class="checkbox-option">
+                        <input type="checkbox" id="autoDownload" checked />
+                        <span>🚀 自动下载（解析后立即下载）</span>
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" id="showPreview" checked />
+                        <span>📺 解析后显示预览</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="progress-section" id="progressSection">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">正在解析视频...</div>
+            </div>
+        </div>
+
+        <div class="result-section" id="resultSection">
+            <div class="result-card">
+                <div class="result-title">
+                    <span>✅</span>
+                    <span>解析成功！</span>
+                </div>
+                <div class="result-info" id="resultInfo">
+                    <p><strong>视频标题：</strong><span id="videoTitle">-</span></p>
+                    <p><strong>平台：</strong><span id="videoPlatform">-</span></p>
+                    <p><strong>时长：</strong><span id="videoDuration">-</span></p>
+                </div>
+                <video class="video-preview" id="videoPreview" controls></video>
+                <div class="download-actions">
+                    <button class="btn btn-download" id="downloadBtn">
+                        <span>⬇️</span>
+                        <span>下载视频</span>
+                    </button>
+                    <button class="btn btn-secondary" id="copyUrlBtn">
+                        <span>📋</span>
+                        <span>复制链接</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="error-section" id="errorSection">
+            <div class="error-card">
+                <div class="error-title">
+                    <span>❌</span>
+                    <span>解析失败</span>
+                </div>
+                <div class="error-message" id="errorMessage">
+                    无法解析视频，请检查链接是否正确
+                </div>
+                <button class="btn btn-secondary" id="retryBtn">
+                    <span>🔄</span>
+                    <span>重试</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="card instructions">
+            <h3>📖 使用说明</h3>
+            <ul>
+                <li>
+                    <span class="step-number">1</span>
+                    <span>复制视频分享链接（支持抖音、B站、快手、豆包等平台）</span>
+                </li>
+                <li>
+                    <span class="step-number">2</span>
+                    <span>粘贴到上方输入框（支持直接粘贴整段文字）</span>
+                </li>
+                <li>
+                    <span class="step-number">3</span>
+                    <span>勾选"自动下载"选项，视频将自动下载到电脑</span>
+                </li>
+                <li>
+                    <span class="step-number">4</span>
+                    <span>点击"解析视频"按钮，稍等片刻即可</span>
+                </li>
+                <li>
+                    <span class="step-number">5</span>
+                    <span>视频下载完成，可在 <span id="downloadDirInfo">项目 downloads 目录</span> 查看</span>
+                </li>
+            </ul>
+
+            <div style="margin-top: 20px; padding: 15px; background: rgba(124, 58, 237, 0.1); border-radius: 12px;">
+                <h4 style="color: #a855f7; margin-bottom: 10px;">💡 支持的平台</h4>
+                <p style="color: rgba(255, 255, 255, 0.8); font-size: 0.95rem;">
+                    抖音短视频 · B站哔哩哔哩 · 快手 · 豆包
+                </p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>使用本工具请遵守相关平台的使用条款，仅用于个人学习和研究</p>
+        </div>
+    </div>
+
+    <script>
+        const videoUrlInput = document.getElementById('videoUrl');
+        const parseBtn = document.getElementById('parseBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const copyUrlBtn = document.getElementById('copyUrlBtn');
+        const retryBtn = document.getElementById('retryBtn');
+        const autoDownloadCheckbox = document.getElementById('autoDownload');
+        const showPreviewCheckbox = document.getElementById('showPreview');
+        const platformBtns = document.querySelectorAll('.platform-btn');
+
+        let currentPlatform = 'auto';
+        let currentVideoUrl = '';
+        let currentVideoData = null;
+
+        // 平台选择
+        platformBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                platformBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentPlatform = btn.dataset.platform;
+            });
+        });
+
+        // 链接预览
+        videoUrlInput.addEventListener('input', () => {
+            const text = videoUrlInput.value;
+            const urlPatterns = [
+                /https?:\/\/v\.douyin\.com\/[a-zA-Z0-9_-]+/,
+                /https?:\/\/www\.douyin\.com\/video\/\d+/,
+                /https?:\/\/b23\.tv\/[a-zA-Z0-9]+/,
+                /https?:\/\/www\.bilibili\.com\/video\/[a-zA-Z0-9]+/,
+                /https?:\/\/v\.kuaishou\.com\/[a-zA-Z0-9]+/,
+                /https?:\/\/www\.kuaishou\.com\/video\/\d+/
+            ];
+
+            for (const pattern of urlPatterns) {
+                const match = text.match(pattern);
+                if (match) {
+                    showLinkPreview(`检测到链接: ${match[0]}`);
+                    return;
+                }
+            }
+
+            // 从整段文字中提取链接
+            const allUrls = text.match(/https?:\/\/[^\s]+/g);
+            if (allUrls && allUrls.length > 0) {
+                showLinkPreview(`检测到 ${allUrls.length} 个链接`);
+            } else {
+                hideLinkPreview();
+            }
+        });
+
+        function showLinkPreview(text) {
+            const preview = document.getElementById('linkPreview');
+            preview.textContent = text;
+            preview.classList.add('show');
+        }
+
+        function hideLinkPreview() {
+            document.getElementById('linkPreview').classList.remove('show');
+        }
+
+        // 解析视频
+        async function parseVideo() {
+            let url = videoUrlInput.value.trim();
+
+            if (!url) {
+                showError('请输入视频链接');
+                return;
+            }
+
+            // 从整段文字中提取URL
+            const urlMatch = url.match(/https?:\/\/[^\s]+/);
+            if (urlMatch) {
+                url = urlMatch[0];
+            }
+
+            currentVideoUrl = url;
+
+            showProgress('正在解析视频，请稍候...');
+            parseBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/parse', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        url: url,
+                        platform: currentPlatform,
+                        autoDownload: autoDownloadCheckbox.checked
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentVideoData = data;
+                    showResult(data);
+
+                    if (autoDownloadCheckbox.checked && data.downloadPath) {
+                        showSuccess(`视频已自动下载到: ${data.downloadPath}`);
+                    }
+                } else {
+                    showError(data.message || '解析失败');
+                }
+            } catch (error) {
+                showError('网络错误，请检查网络连接');
+            } finally {
+                parseBtn.disabled = false;
+                hideProgress();
+            }
+        }
+
+        // 显示进度
+        function showProgress(text) {
+            const section = document.getElementById('progressSection');
+            const textEl = document.getElementById('progressText');
+            const fill = document.getElementById('progressFill');
+
+            textEl.textContent = text;
+            fill.style.width = '50%';
+            section.classList.add('show');
+        }
+
+        function updateProgress(percent, text) {
+            const fill = document.getElementById('progressFill');
+            const textEl = document.getElementById('progressText');
+            fill.style.width = `${percent}%`;
+            textEl.textContent = text;
+        }
+
+        function hideProgress() {
+            document.getElementById('progressSection').classList.remove('show');
+        }
+
+        // 显示结果
+        function showResult(data) {
+            hideError();
+
+            document.getElementById('videoTitle').textContent = data.title;
+            document.getElementById('videoPlatform').textContent = data.platform || '未知';
+
+            // 初始显示服务器返回的信息
+            const durationEl = document.getElementById('videoDuration');
+            if (data.fileSize) {
+                const sizeMB = (data.fileSize / (1024 * 1024)).toFixed(2);
+                durationEl.textContent = `文件大小: ${sizeMB} MB`;
+            }
+
+            const videoPreview = document.getElementById('videoPreview');
+            if (showPreviewCheckbox.checked && data.downloadUrl) {
+                videoPreview.src = data.downloadUrl;
+                videoPreview.style.display = 'block';
+                
+                // 视频加载完成后获取实际时长
+                videoPreview.onloadedmetadata = function() {
+                    const realDuration = videoPreview.duration;
+                    if (realDuration && !isNaN(realDuration)) {
+                        const mins = Math.floor(realDuration / 60);
+                        const secs = Math.floor(realDuration % 60);
+                        const formattedDuration = `${mins}分${secs}秒`;
+                        
+                        // 如果与服务器返回的时长不同，更新显示
+                        if (data.duration && Math.abs(realDuration - data.duration) > 1) {
+                            durationEl.textContent = formattedDuration + ' (实际)';
+                            console.log(`视频实际时长: ${formattedDuration}, 服务器返回: ${Math.floor(data.duration / 60)}分${Math.floor(data.duration % 60)}秒`);
+                        } else if (!data.duration) {
+                            durationEl.textContent = formattedDuration;
+                        }
+                    }
+                };
+                
+                // 备用方案：视频开始播放时获取时长
+                videoPreview.oncanplay = function() {
+                    if (videoPreview.duration && !isNaN(videoPreview.duration)) {
+                        const realDuration = videoPreview.duration;
+                        const mins = Math.floor(realDuration / 60);
+                        const secs = Math.floor(realDuration % 60);
+                        const formattedDuration = `${mins}分${secs}秒`;
+                        
+                        // 标记为实际时长
+                        if (data.duration && Math.abs(realDuration - data.duration) > 1) {
+                            durationEl.textContent = formattedDuration + ' (实际)';
+                        }
+                    }
+                };
+                
+            } else if (showPreviewCheckbox.checked && data.videoUrl) {
+                videoPreview.src = data.videoUrl;
+                videoPreview.style.display = 'block';
+            } else {
+                videoPreview.style.display = 'none';
+            }
+
+            // 更新下载按钮
+            const downloadBtn = document.getElementById('downloadBtn');
+            downloadBtn.onclick = () => {
+                if (data.downloadUrl) {
+                    window.location.href = data.downloadUrl;
+                } else if (data.videoUrl) {
+                    window.open(data.videoUrl, '_blank');
+                }
+            };
+
+            document.getElementById('resultSection').classList.add('show');
+        }
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorSection').classList.add('show');
+            document.getElementById('resultSection').classList.remove('show');
+        }
+
+        function hideError() {
+            document.getElementById('errorSection').classList.remove('show');
+        }
+
+        function showSuccess(message) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: rgba(16, 185, 129, 0.9);
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+            `;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        // 下载视频（现在直接使用已下载的文件
+        async function downloadVideo() {
+            if (!currentVideoData) return;
+            
+            if (currentVideoData.downloadUrl) {
+                // 已经下载好的视频
+                window.location.href = currentVideoData.downloadUrl;
+                return;
+            } else if (currentVideoData.videoUrl) {
+                // 打开原始视频链接
+                window.open(currentVideoData.videoUrl, '_blank');
+            } else {
+                showError('暂无下载链接不可用');
+            }
+        }
+
+        // 复制链接
+        function copyUrl() {
+            if (currentVideoData && currentVideoData.videoUrl) {
+                navigator.clipboard.writeText(currentVideoData.videoUrl);
+                showSuccess('链接已复制到剪贴板');
+            }
+        }
+
+        // 事件绑定
+        parseBtn.addEventListener('click', parseVideo);
+        downloadBtn.addEventListener('click', downloadVideo);
+        copyUrlBtn.addEventListener('click', copyUrl);
+        retryBtn.addEventListener('click', () => {
+            hideError();
+            parseVideo();
+        });
+
+        // 支持回车键解析
+        videoUrlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                parseVideo();
+            }
+        });
+
+        // 添加动画样式
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 获取并显示实际下载目录
+        async function loadDownloadDir() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                if (data.download_dir) {
+                    document.getElementById('downloadDir').textContent = data.download_dir;
+                    document.getElementById('downloadDirInfo').textContent = data.download_dir;
+                }
+            } catch (error) {
+                console.error('获取下载目录失败:', error);
+            }
+        }
+
+        // 页面加载时获取下载目录
+        loadDownloadDir();
+
+        console.log('VideoCleaner 已加载');
+    </script>
+</body>
+</html>
