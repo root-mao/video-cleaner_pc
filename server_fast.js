@@ -31,26 +31,42 @@ function log(msg) {
     console.log(`[${new Date().toLocaleTimeString()}] ${msg}`);
 }
 
+function getPuppeteerLaunchOptions(extraArgs = []) {
+    const defaultArgs = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-images',
+        '--blink-settings=imagesEnabled=false'
+    ];
+    const options = {
+        headless: 'new',
+        args: [...defaultArgs, ...extraArgs],
+        timeout: 30000,
+        protocolTimeout: 120000
+    };
+    const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    if (chromePath && fs.existsSync(chromePath)) {
+        options.executablePath = chromePath;
+        log(`使用指定 Chrome 路径: ${chromePath}`);
+    }
+    return options;
+}
+
+async function launchBrowser(extraArgs = []) {
+    const options = getPuppeteerLaunchOptions(extraArgs);
+    return await puppeteer.launch(options);
+}
+
 async function getBrowser() {
     if (browserInstance && browserReady) {
         return browserInstance;
     }
     
     log('启动浏览器实例...');
-    browserInstance = await puppeteer.launch({
-        headless: 'new',
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--disable-extensions',
-            '--disable-images',
-            '--blink-settings=imagesEnabled=false'
-        ],
-        timeout: 30000,
-        protocolTimeout: 120000
-    });
+    browserInstance = await launchBrowser();
     browserReady = true;
     log('浏览器实例就绪');
     return browserInstance;
@@ -359,10 +375,7 @@ async function tryBilibiliParser(url) {
     const audioQualityIds = ['30216', '30232', '30280', '30250', '30251'];
     
     try {
-        const browser = await puppeteer.launch({
-            headless: 'new',
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        const browser = await launchBrowser([]);
         
         const page = await browser.newPage();
         
@@ -504,10 +517,7 @@ async function tryDoubaoParser(url) {
     log('使用豆包专用解析器...');
 
     try {
-        const browser = await puppeteer.launch({
-            headless: 'new',
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        const browser = await launchBrowser([]);
 
         const page = await browser.newPage();
 
@@ -761,18 +771,22 @@ async function tryPuppeteer(url) {
 
 // 检查FFmpeg是否可用
 function checkFfmpeg() {
-    // 首先尝试在常见位置查找FFmpeg
-    const ffmpegPaths = [
+    const isWin = process.platform === 'win32';
+    const ffmpegPaths = isWin ? [
         path.join(__dirname, 'tools', 'ffmpeg.exe'),
         path.join(__dirname, 'ffmpeg.exe'),
         'ffmpeg'
+    ] : [
+        'ffmpeg',
+        '/usr/bin/ffmpeg',
+        '/usr/local/bin/ffmpeg',
+        path.join(__dirname, 'tools', 'ffmpeg')
     ];
     
     for (const ffmpegPath of ffmpegPaths) {
         try {
-            if (ffmpegPath === 'ffmpeg') {
-                // 只在PATH中可能存在的通用名称
-                // 不检查existsSync，直接尝试
+            if (ffmpegPath === 'ffmpeg' || !ffmpegPath.includes(path.sep)) {
+                log(`尝试使用系统FFmpeg: ${ffmpegPath}`);
                 return ffmpegPath;
             }
             

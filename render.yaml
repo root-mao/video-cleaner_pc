@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: video-cleaner
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerCommand: node server_fast.js
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: downloads
+      mountPath: /app/downloads
+      sizeGB: 5

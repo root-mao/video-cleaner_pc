@@ -5,6 +5,15 @@ function log(msg) {
     console.log(`[水印处理] ${msg}`);
 }
 
+function isFfmpegAvailable(ffmpegPath) {
+    if (!ffmpegPath) return false;
+    if (fs.existsSync(ffmpegPath)) return true;
+    if (!ffmpegPath.includes('/') && !ffmpegPath.includes('\\') && !ffmpegPath.includes('.')) {
+        return true;
+    }
+    return false;
+}
+
 function spawnAsync(programPath, args, timeout = 600000) {
     return new Promise((resolve, reject) => {
         let stderrData = '';
@@ -53,7 +62,7 @@ async function removeWatermark(inputPath, ffmpegPath, platform = 'general') {
 
         ffmpegPath = ffmpegPath.replace(/^"|"$/g, '');
 
-        if (!ffmpegPath || !fs.existsSync(ffmpegPath)) {
+        if (!isFfmpegAvailable(ffmpegPath)) {
             log('FFmpeg不可用: ' + ffmpegPath);
             return { success: true, skipped: true };
         }
