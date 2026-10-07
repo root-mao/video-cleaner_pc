@@ -4,12 +4,32 @@ services:
     runtime: docker
     plan: starter
     dockerfilePath: ./Dockerfile
-    dockerCommand: node server_fast.js
+    dockerCommand: node --max-old-space-size=256 server_fast.js
     envVars:
       - key: PORT
         value: 3000
       - key: NODE_ENV
         value: production
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=256
+      - key: MAX_PARALLEL
+        value: 1
+      - key: FILE_EXPIRE_HOURS
+        value: 1
+      - key: BROWSER_IDLE_TIMEOUT
+        value: 120000
+      - key: PRESTART_BROWSER
+        value: false
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/chromium
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: true
+      - key: FFMPEG_THREADS
+        value: 1
+      - key: MAX_FILE_SIZE_MB
+        value: 200
+      - key: MEMORY_THRESHOLD_MB
+        value: 400
     disk:
       name: downloads
       mountPath: /app/downloads

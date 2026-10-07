@@ -1,0 +1,25 @@
+name = "video-cleaner"
+main = "worker.js"
+compatibility_date = "2026-10-07"
+
+# 容器定义：镜像 + 关联的 Durable Object 类
+[[containers]]
+class_name = "VideoCleaner"
+image = "./Dockerfile"
+# 全部流量都路由到同一个 "shared" 实例，所以这里锁 1 个即可
+max_instances = 1
+# 实例规格：视频转码 / OpenCV 偏 CPU 与内存
+#   standard-3 = 2 vCPU / 8 GiB / 16 GB（推荐起点）
+#   若 OOM 或需更快，升到 standard-4（4 vCPU / 12 GiB / 20 GB）
+#   更小规格（lite/basic/standard-1）跑 Chromium + ffmpeg 容易内存不足
+instance_type = "standard-3"
+
+# 让 Worker 能拿到容器命名空间
+[[durable_objects.bindings]]
+name = "VIDEO_CLEANER"
+class_name = "VideoCleaner"
+
+# 声明 Durable Object 类（带 SQLite 存储，用于容器元状态）
+[exports.VideoCleaner]
+type = "durable-object"
+storage = "sqlite"

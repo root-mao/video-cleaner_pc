@@ -1,6 +1,6 @@
 node_modules/
 downloads/
-tools/ffmpeg.exe
+tools/
 .cache/
 *.log
 .DS_Store
@@ -8,3 +8,25 @@ tools/ffmpeg.exe
 .idea/
 *.bak
 *.tmp
+
+# 本地工具与生成物
+__pycache__/
+.workbuddy/
+nul
+
+# 测试 / 调试 / 临时产物（不计入项目仓库）
+*.jpg
+*.png
+*.mp4
+*.aac
+page_dump.html
+wr_debug.txt
+test_*
+final_analysis/
+test_analysis/
+watermark_analysis_original/
+watermark_analysis_processed/
+temp_*
+analyze_watermark.py
+analyze_watermark_full.py
+verify_watermark.py

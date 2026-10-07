@@ -1,114 +1,165 @@
-# VideoCleaner - AI自动视频去水印工具
+# 视频去水印工具
 
-## 功能特点
+一个支持多平台的视频去水印 Web 工具，浏览器直接访问即可使用，无需安装任何客户端。
 
-- **多平台支持**: 支持抖音、B站、快手等主流视频平台
-- **自动解析**: 自动识别视频分享链接并提取视频
-- **智能去水印**: 使用FFmpeg滤镜技术去除视频水印（非裁剪方式）
-- **音视频合并**: 正确处理DASH格式视频，确保声音正常
-- **保留原始尺寸**: 不裁剪画面，保留视频原始分辨率
+## 功能特性
 
-## 支持平台
+- ✅ **B站** - 稳定解析，秒级响应
+- ✅ **抖音** - 需要安装Chrome浏览器（已内置），支持分享链接解析
+- ✅ OpenCV AI重建去除水印
+- ✅ 保留原始音频
+- ✅ MP4文件优化，支持流式播放
+- ✅ 纯 Web 界面，支持 Chrome、Edge、Firefox、Safari 等主流浏览器
 
-- ✅ 抖音 (Douyin)
-- ✅ B站 (Bilibili)
-- ✅ 快手 (Kuaishou)
-- ✅ 豆包 (Doubao)
-
-## 快速开始
-
-### 启动服务
-
-```bash
-# 方式1：双击启动脚本（推荐）
-start.bat
-
-# 方式2：命令行启动
-node server_fast.js
-```
-
-### 使用方法
-
-1. 打开浏览器访问 http://localhost:3000
-2. 粘贴视频分享链接到输入框
-3. 点击"开始解析"按钮
-4. 等待视频自动下载和去水印处理完成
-5. 点击下载按钮保存去水印后的视频
+> ⚠️ **注意**: 抖音解析依赖Puppeteer浏览器自动化。视频URL有时效性，解析成功后需尽快下载。
 
 ## 项目结构
 
 ```
 video-cleaner/
-├── downloads/          # 视频下载目录
-├── tools/              # FFmpeg工具
-│   └── ffmpeg.exe     # FFmpeg可执行文件
-├── server_fast.js      # 主服务器文件
-├── watermark_remover.js # 去水印模块
-├── index.html          # 前端页面
-├── package.json        # 项目配置
-├── start.bat          # 启动脚本
-└── README.md          # 项目说明
+├── server_fast.js       # Node.js后端API服务
+├── index.html           # Web前端页面
+├── inpaint_watermark.py # OpenCV视频处理脚本
+├── watermark_remover.js # 水印去除模块
+├── package.json         # Node.js依赖配置
+├── Dockerfile           # Docker部署配置
+├── render.yaml          # Render部署配置
+├── downloads/           # 处理后的视频存储
+├── tools/               # FFmpeg工具
+└── versions/            # 版本历史
 ```
 
-## 核心技术
+## 快速开始
 
-### 去水印算法
+### 1. 本地运行
 
-使用FFmpeg的`boxblur`滤镜对水印区域进行模糊处理：
+```bash
+# 安装依赖
+npm install
 
-- **B站**: 右上角logo区域模糊
-- **抖音**: 右侧logo区域模糊
-- **快手**: 右下角logo区域模糊
-- **豆包**: 右侧logo区域模糊
+# 启动服务
+node server_fast.js
+# 服务地址: http://localhost:3000
+```
 
-### 处理流程
+然后在浏览器中打开 `http://localhost:3000` 即可使用。
 
-1. 解析视频分享链接
-2. 提取视频和音频流URL
-3. 下载视频到本地
-4. 使用FFmpeg滤镜去除水印（保留原始尺寸）
-5. 输出去水印后的视频
+### 2. Docker 运行
 
-## 启动脚本说明
+```bash
+# 构建镜像
+docker build -t video-cleaner .
 
-`start.bat` 启动脚本功能：
-- 自动检查Node.js环境
-- 自动检测并释放占用的端口3000
-- 启动Node.js服务器
-- 显示访问地址
+# 运行容器
+docker run -p 3000:3000 -v $(pwd)/downloads:/app/downloads video-cleaner
+```
 
-## 下载目录
+### 3. 测试API
 
-所有下载的视频保存在项目目录下的 `downloads/` 文件夹中
+```bash
+# 解析豆包视频
+curl -X POST http://localhost:3000/api/parse \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://www.doubao.com/video-sharing?share_id=xxx", "platform": "doubao"}'
+```
 
-## 故障排除
+## API接口
 
-### 常见问题
+### 解析视频
+```
+POST /api/parse
+Content-Type: application/json
 
-1. **端口被占用**
-   - 启动脚本会自动检测并释放端口3000
+{
+  "url": "https://www.doubao.com/video-sharing?share_id=xxx",
+  "platform": "auto"
+}
 
-2. **视频没有声音**
-   - 确保网络正常，重新解析视频
-   - B站视频采用DASH格式，需要正确合并音视频
+Response:
+{
+  "success": true,
+  "title": "视频标题",
+  "platform": "豆包",
+  "videoUrl": "原始视频URL",
+  "downloadUrl": "/download/视频文件名.mp4",
+  "fileSize": 2706272,
+  "source": "Doubao Parser"
+}
+```
 
-3. **水印未去除**
-   - 检查网络连接
-   - 确保FFmpeg工具可用
+### 下载视频
+```
+GET /download/:filename
+Content-Type: video/mp4
+Accept-Ranges: bytes
+```
 
-4. **启动脚本闪退**
-   - 检查Node.js路径配置
-   - 确保脚本所在目录正确
+### 状态检查
+```
+GET /api/status
 
-## 版本历史
+Response:
+{
+  "status": "running",
+  "browser_ready": true,
+  "active_tasks": 0,
+  "memory": {
+    "rss_mb": 150,
+    "heap_used_mb": 50
+  }
+}
+```
 
-- **V1.0**: 基础版本
-- **V2.0**: 优化版本
-- **V3.0**: 稳定版本（支持去水印）
-- **V4.0**: 当前版本
+## 部署
+
+详细部署指南请参考 [DEPLOYMENT.md](DEPLOYMENT.md)
+
+## 技术栈
+
+| 组件 | 技术 | 说明 |
+|------|------|------|
+| 前端 | 原生 HTML/CSS/JS | 跨浏览器兼容，无需框架 |
+| 后端 | Node.js + Express | API服务 |
+| 浏览器自动化 | Puppeteer | 视频链接解析 |
+| 视频处理 | OpenCV + FFmpeg | 水印去除 |
+| 部署 | Docker / Render / VPS | 灵活部署方案 |
+
+## 浏览器兼容性
+
+| 浏览器 | 最低版本 | 说明 |
+|--------|---------|------|
+| Chrome | 80+ | 完整支持 |
+| Edge | 80+ | 完整支持 |
+| Firefox | 75+ | 完整支持 |
+| Safari | 13+ | 完整支持 |
+| 360浏览器 | 极速模式 | 兼容支持 |
+| 夸克浏览器 | 最新版 | 兼容支持 |
+
+> **注意**：旧版 IE（≤11）不受支持，建议使用现代浏览器以获得最佳体验。
 
 ## 注意事项
 
-- 本工具仅供学习和研究使用
-- 请遵守各平台的使用条款和版权规定
-- 建议在合法合规的前提下使用本工具
+1. **文件过期**: 处理后视频保留2小时（可配置），需及时下载
+2. **FFmpeg依赖**: 视频处理需要 FFmpeg，请将 `ffmpeg.exe` 放入 `tools/` 目录或确保系统 PATH 中包含
+3. **HTTPS**: 生产环境建议配置 HTTPS
+
+## 许可证
+
+MIT License
+
+## 更新日志
+
+### v1.1.0
+- 移除小程序模块，专注 Web 端体验
+- 增强跨浏览器兼容性（添加 vendor prefix、降级方案）
+- 添加浏览器兼容性检测与提示
+- 优化移动端响应式布局
+
+### v1.0.0
+- 初始版本发布
+- 支持多平台视频解析
+- OpenCV水印去除功能
+
+---
+
+*如有问题，请提交Issue*
