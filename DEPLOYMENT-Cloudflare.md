@@ -31,7 +31,7 @@
 2. 已安装 **Node 20+** 与 **Wrangler**：
    - `npm install -g wrangler`
    - `wrangler --version`
-3. Cloudflare 账号处于 **Workers 付费计划**（Containers 仅在 Paid 计划可用）。
+3. Cloudflare 账号处于 **Workers 付费计划（Workers Paid，\$5/月）**。Containers 仅在 Paid 计划可用，且账户必须已开通容器权限（`containers.enabled`）。**这一步没满足，部署必失败**（见下方「常见部署错误排查」）。
 4. 登录：`wrangler login`
 5. 安装 Worker 侧依赖（用于打包 worker.js）：
    - `npm install`  （会装 `@cloudflare/containers`，已加入 devDependencies）
@@ -61,7 +61,38 @@ npx wrangler containers list
 
 ---
 
-## 配置文件说明
+## 常见部署错误排查
+
+### ❌ `A request to the Cloudflare API (/accounts/<id>/containers/me) failed`
+
+这是**最常见也最容易卡住**的报错。它发生在 `wrangler deploy` 已经把 Worker 传完、开始处理容器应用供给的那一步——wrangler 去调 `GET/POST /accounts/<id>/containers/me` 创建/查询容器应用时，Cloudflare 直接拒绝了。
+
+**根因（99% 是下面之一）：**
+
+1. **账户没升级 Workers Paid** —— Containers 强制要求 Workers Paid 付费计划（\$5/月）。免费账户调 `/containers/me` 会被拒。
+2. **已付费但 `containers.enabled` 权限没生效** —— 社区已有先例：Workers Paid 激活了，但容器 entitlement 没传播到位，导致容器相关 API 仍走 Free 限制而失败。
+
+**如何确认是哪种：**
+
+```bash
+# 看当前登录账户与计划
+wrangler whoami
+
+# 直接查容器能力是否可用（若报 403 / entitlement 错，就是权限问题）
+npx wrangler containers list
+```
+
+或者在 Cloudflare 仪表盘确认：
+- **Workers & Pages → 你的账户 → 订阅/Plans**：确认是 **Workers Paid**（不是 Free）。
+- 若已是 Paid 仍报这个错，基本是 entitlement 没传播：
+  - 先尝试 **切换一次计划**（降到 Free 再升回 Paid），强制刷新权限；
+  - 或去社区/支持提单，要求把 `containers.enabled` 对齐到已付费的 Workers Paid 订阅（参考已知案例：Queues 也有同样的 entitlement 不传播问题）。
+
+**结论**：这个错误**与本项目代码、wrangler.toml 配置无关**（配置已校验过：`instance_type = "standard-3"` 合法、`exports` 声明写法正确）。修好账户权限后，同样的命令即可通过。
+
+> 补充：从报错日志路径 `/opt/buildhome/.config/.wrangler/logs/...` 可见本次部署是跑在 **Cloudflare Workers Builds（CI 构建环境）** 里（即你把 GitHub 仓库连到了 Workers Builds）。无论本地还是 Builds，容器权限都看同一个账户，排查方式一致。
+
+---
 
 ### `wrangler.toml`
 - `main = "worker.js"`：Worker 入口（反向代理）。
@@ -72,7 +103,7 @@ npx wrangler containers list
 ### `worker.js`
 - `VideoCleaner extends Container`：`defaultPort = 3000` 必须与容器内 Express 监听端口一致；`sleepAfter = "10m"` 控制空闲后休眠（停止计费）。
 - `envVars`：注入到容器的环境变量（Chromium 路径、并行数、内存上限等）。
-- `env.VIDEO_CLEANER.getByName("shared").fetch(request)`：把请求完整转发给容器。
+- `getContainer(env.VIDEO_CLEANER, "shared").fetch(request)`：把请求完整转发给容器（当前官方推荐的容器句柄获取方式，替代旧式 `getByName`）。
 
 ### `Dockerfile`
 - 基于 `linux/amd64`（Cloudflare 强制要求）。

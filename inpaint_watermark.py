@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 豆包视频水印去除 - OpenCV inpainting方案
-使用cv2.inpaint()进行智能像素重建，保留音频
+使用cv2.inpaint()进行智能像素重建，保留音频。
+画质策略：分辨率严格等于原视频（不缩放）；仅编码一次（OpenCV 逐帧 inpaint 后由
+ffmpeg 管道单遍高质量编码 H.264，crf=18 近视觉无损），不再做二次压缩；合并音频时
+视频以 -c:v copy 原样拷贝，最大限度保留原片清晰度。
 """
 
 import sys
@@ -111,32 +114,67 @@ def remove_watermark_inpaint(input_path, output_path, platform='doubao'):
         mask[logo_y:logo_y+logo_h, logo_x:logo_x+logo_w] = 255
         log(f'  添加水印区域: ({logo_x},{logo_y}) {logo_w}x{logo_h}')
 
-    # 创建临时输出视频（无音频）- 使用唯一文件名
+    # 临时文件名
     temp_suffix = str(int(time.time() * 1000))
     temp_output = f"{os.path.dirname(input_path)}/temp_inpaint_{temp_suffix}.mp4"
+    audio_temp = f"{os.path.dirname(input_path)}/temp_audio_{temp_suffix}.aac"
 
-    # 使用MPEG4编码确保浏览器兼容性
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(temp_output, fourcc, fps, (width, height))
+    # 优先用 ffmpeg 管道做「单遍高质量编码」：OpenCV 只负责 inpaint，不负责编码，
+    # 避免旧方案先写 mp4v 再用 H.264 二次重编码造成的画质折损。
+    # 画质策略：分辨率严格等于原视频（不缩放）；crf=18 近视觉无损；仅编码一次。
+    ffmpeg = get_ffmpeg_path()
+    use_pipe = ffmpeg is not None
+    ffmpeg_proc = None
+    out = None
 
-    if not out.isOpened():
-        log('错误: 无法创建输出视频')
-        cap.release()
-        return False
+    if use_pipe:
+        # rawvideo 管道 -> H.264（分辨率=原视频，crf 18 近视觉无损，单遍编码）
+        cmd = [
+            ffmpeg, '-y',
+            '-f', 'rawvideo', '-pix_fmt', 'bgr24',
+            '-s', f'{width}x{height}', '-r', f'{fps:.3f}',
+            '-i', '-',
+            '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+            '-pix_fmt', 'yuv420p', '-threads', '0',
+            '-movflags', '+faststart', temp_output
+        ]
+        log(f'FFmpeg 单遍编码: {" ".join(cmd)}')
+        ffmpeg_proc = subprocess.Popen(
+            cmd, stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    else:
+        # 兜底：没有 ffmpeg 时退回 OpenCV 自带 mp4v 编码（保留原行为）
+        log('警告: 没有可用FFmpeg，退回 OpenCV mp4v 编码（浏览器可能黑屏）')
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(temp_output, fourcc, fps, (width, height))
+        if not out.isOpened():
+            log('错误: 无法创建输出视频')
+            cap.release()
+            return False
 
     # 处理每一帧
     processed = 0
     last_log_time = time.time()
     start_time = time.time()  # 记录开始时间用于计算ETA
+    pipe_broken = False
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # 使用inpainting修复水印区域
+        # 使用inpainting修复水印区域（分辨率不变，仅重建水印像素）
         result = cv2.inpaint(frame, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
 
-        out.write(result)
+        if use_pipe:
+            try:
+                ffmpeg_proc.stdin.write(result.tobytes())
+            except (BrokenPipeError, ValueError, OSError) as e:
+                pipe_broken = True
+                log(f'管道写入失败（ffmpeg 可能已崩溃）: {e}')
+                break
+        else:
+            out.write(result)
         processed += 1
 
         # 每50帧或每10秒输出一次进度
@@ -144,18 +182,37 @@ def remove_watermark_inpaint(input_path, output_path, platform='doubao'):
         if processed % 50 == 0 or (now - last_log_time) >= 10:
             elapsed = now - start_time
             fps_process = processed / elapsed if elapsed > 0 else 0
-            eta = (frame_count - processed) / fps_process if fps_process > 0 else 0
-            log(f'已处理 {processed}/{frame_count} 帧 ({processed*100//frame_count}%), 速度:{fps_process:.1f}fps, 预计剩余:{eta:.0f}s')
+            eta = (frame_count - processed) / fps_process if (fps_process > 0 and frame_count > 0) else 0
+            pct = (processed * 100 // frame_count) if frame_count > 0 else 0
+            log(f'已处理 {processed}/{frame_count} 帧 ({pct}%), 速度:{fps_process:.1f}fps, 预计剩余:{eta:.0f}s')
             last_log_time = now
 
     # 释放资源
     cap.release()
-    out.release()
+    if use_pipe:
+        try:
+            ffmpeg_proc.stdin.close()
+        except Exception:
+            pass
+        try:
+            rc = ffmpeg_proc.wait(timeout=180)
+        except Exception as e:
+            log(f'等待 ffmpeg 编码结束异常: {e}')
+            rc = -1
+        if rc != 0 or not os.path.exists(temp_output) or os.path.getsize(temp_output) < 1000:
+            log(f'错误: ffmpeg 单遍编码失败 (returncode={rc})')
+            if os.path.exists(temp_output):
+                os.unlink(temp_output)
+            return False
+        log(f'✓ 视频帧处理+编码完成: {processed}帧')
+    else:
+        out.release()
+        if not os.path.exists(temp_output):
+            log('错误: 输出文件不存在')
+            return False
+        log(f'✓ 视频帧处理完成: {processed}帧')
 
-    log(f'✓ 视频帧处理完成: {processed}帧')
-
-    # 检查原始视频是否有音频
-    ffmpeg = get_ffmpeg_path()
+    # 检查原始视频是否有音频（ffmpeg 已在前面取得，若没有则按无音频处理）
     has_audio_stream = False
     if ffmpeg:
         try:
@@ -169,126 +226,87 @@ def remove_watermark_inpaint(input_path, output_path, platform='doubao'):
         except Exception as e:
             log(f'探测音频流失败，按无音频处理: {e}')
     else:
-        log('无可用FFmpeg，跳过音频探测（按无音频分支走 H.264 转码）')
+        log('无可用FFmpeg，跳过音频探测（按无音频分支）')
 
     if has_audio_stream:
-        log('检测到音频流，正在合并音频...')
-        # 提取音频 - 使用唯一文件名
-        audio_temp = f"{os.path.dirname(input_path)}/temp_audio_{temp_suffix}.aac"
-        subprocess.run(
-            [ffmpeg, '-y', '-i', input_path, '-vn', '-acodec', 'copy', audio_temp],
-            capture_output=True,
-            timeout=30
-        )
+        log('检测到音频流，正在合并音频（视频不重编码，保留画质）...')
+        try:
+            ar = subprocess.run(
+                [ffmpeg, '-y', '-i', input_path, '-vn', '-acodec', 'copy', audio_temp],
+                capture_output=True, timeout=30
+            )
+            if ar.returncode != 0 or not os.path.exists(audio_temp):
+                log('提取音频失败，将输出无音频版本')
+                has_audio_stream = False
+        except Exception as e:
+            log(f'提取音频异常: {e}')
+            has_audio_stream = False
 
-        # 合并视频和音频，并使用faststart将moov移到文件开头以支持流式播放
-        log('合并视频和音频，优化moov位置...')
+    if has_audio_stream and os.path.exists(audio_temp):
+        # 视频已在前面高质量编码好，这里 -c:v copy 不重编码，音频原样拷贝，最大限度保真
         result = subprocess.run(
-            [ffmpeg, '-y', '-i', temp_output, '-i', audio_temp, 
-             '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-             '-movflags', '+faststart', '-c:a', 'copy', output_path],
-            capture_output=True,
-            timeout=120
+            [ffmpeg, '-y', '-i', temp_output, '-i', audio_temp,
+             '-c:v', 'copy', '-c:a', 'copy',
+             '-movflags', '+faststart', output_path],
+            capture_output=True, text=True, timeout=120
         )
-        
-        if result.returncode != 0:
+        if result.returncode != 0 or not os.path.exists(output_path):
             log(f'合并失败: {result.stderr[-300:] if result.stderr else "unknown error"}')
-            # 清理临时文件
             for tmp_file in [temp_output, audio_temp]:
                 try:
                     if os.path.exists(tmp_file):
                         os.unlink(tmp_file)
-                except:
+                except Exception:
                     pass
             return False
-
-        # 验证输出文件存在且足够大
-        if not os.path.exists(output_path):
-            log('错误: 输出文件不存在')
-            # 清理临时文件
-            for tmp_file in [temp_output, audio_temp]:
-                try:
-                    if os.path.exists(tmp_file):
-                        os.unlink(tmp_file)
-                except:
-                    pass
-            return False
-        
-        file_size = os.path.getsize(output_path)
-        if file_size < 100000:
-            log(f'警告: 输出文件过小 ({file_size} bytes)，可能合并失败')
-            # 清理临时文件
-            for tmp_file in [temp_output, audio_temp]:
-                try:
-                    if os.path.exists(tmp_file):
-                        os.unlink(tmp_file)
-                except:
-                    pass
-            return False
-        
-        log(f'  文件大小: {file_size} bytes')
-        
-        # 清理临时文件（最后清理）
         for tmp_file in [temp_output, audio_temp]:
             try:
                 if os.path.exists(tmp_file):
                     os.unlink(tmp_file)
             except Exception as e:
                 log(f'清理临时文件警告: {e}')
-
-        log(f'✓ 处理完成（含音频）: {output_path}')
+        log(f'✓ 处理完成（含音频，画质保留）: {output_path}')
     else:
-        # 无音频分支必须重新编码。
-        # OpenCV 的 VideoWriter 用的是 mp4v（MPEG-4 Part 2），浏览器 canPlayType
-        # 直接返回空——Chrome 播这类文件就是一片黑，没有任何报错，
-        # 正是"处理完了却没画面"的典型来源。统一转成 H.264/yuv420p。
-        log('未检测到音频流，OpenCV 原始输出为 mp4v 编码，转码为 H.264 以保证浏览器可播...')
-        ffmpeg = get_ffmpeg_path()
-        transcode_ok = False
-        if ffmpeg:
-            try:
-                result = subprocess.run(
-                    [ffmpeg, '-y', '-i', temp_output,
-                     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-                     '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-                     output_path],
-                    capture_output=True, text=True, timeout=180
-                )
-                if result.returncode == 0 and os.path.exists(output_path):
-                    transcode_ok = True
-                else:
-                    log(f'无音频分支转码失败: {(result.stderr or "")[-300:]}')
-            except Exception as e:
-                log(f'无音频分支转码异常: {e}')
-
-        if not transcode_ok:
-            # 兜底：ffmpeg 不可用时至少把 inpainted 帧交出去（本地播放器多半能看，浏览器可能黑屏）
-            log('警告: 无法转码，将直接输出 mp4v 文件（浏览器可能无法播放）')
-            for p in (output_path,):
-                if os.path.exists(p):
-                    os.unlink(p)
-            if os.path.exists(temp_output):
-                os.rename(temp_output, output_path)
-
-        if not os.path.exists(output_path):
-            log('错误: 输出文件不存在（无音频分支）')
-            return False
-
-        # 阈值按原始体积给，避免短视频（几秒）被 100KB 的固定阈值误杀
-        try:
-            input_size = os.path.getsize(input_path)
-        except Exception:
-            input_size = 0
-        min_size = max(10000, min(100000, int(input_size * 0.05)))
-
-        file_size = os.path.getsize(output_path)
-        if file_size < min_size:
-            log(f'错误: 输出文件过小 ({file_size} bytes < {min_size})，无音频分支处理失败')
-            _cleanup_stale_temp(os.path.dirname(input_path))
-            return False
-
+        # 无音频：temp_output 已是 H.264，直接重命名即可；
+        # 若走到 OpenCV mp4v 兜底（没有 ffmpeg），再补一次 H.264 转码保证浏览器可播。
+        if os.path.exists(output_path):
+            os.unlink(output_path)
+        os.rename(temp_output, output_path)
+        if not use_pipe:
+            ffmpeg2 = get_ffmpeg_path()
+            if ffmpeg2:
+                try:
+                    tr = subprocess.run(
+                        [ffmpeg2, '-y', '-i', output_path,
+                         '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+                         '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+                         f'{output_path}.h264.mp4'],
+                        capture_output=True, text=True, timeout=180
+                    )
+                    if tr.returncode == 0 and os.path.exists(f'{output_path}.h264.mp4'):
+                        os.replace(f'{output_path}.h264.mp4', output_path)
+                        log('已将 mp4v 兜底输出转码为 H.264')
+                    else:
+                        log(f'无音频兜底转码失败: {(tr.stderr or "")[-200:]}')
+                except Exception as e:
+                    log(f'无音频兜底转码异常: {e}')
         log(f'✓ 处理完成（无音频）: {output_path}')
-        log(f'  文件大小: {file_size} bytes')
+
+    # 文件大小校验（阈值按原始体积给，避免短视频被固定阈值误杀）
+    try:
+        input_size = os.path.getsize(input_path)
+    except Exception:
+        input_size = 0
+    min_size = max(10000, min(100000, int(input_size * 0.05)))
+    if os.path.exists(output_path):
+        file_size = os.path.getsize(output_path)
+        log(f'  输出文件大小: {file_size} bytes（原视频: {input_size} bytes）')
+        if file_size < min_size:
+            log(f'错误: 输出文件过小 ({file_size} bytes < {min_size})，处理失败')
+            return False
+    else:
+        log('错误: 输出文件不存在')
+        return False
 
     return True
 

@@ -1,7 +1,7 @@
 // Cloudflare Containers Worker
 // 作用：把所有入站 HTTP 请求反向代理到容器里跑的 Express 服务（server_fast.js）。
 // 重要：终端用户不能直接连容器，所有流量必须经这个 Worker 转发。
-import { Container } from "@cloudflare/containers";
+import { Container, getContainer } from "@cloudflare/containers";
 
 export class VideoCleaner extends Container {
   // 容器里 Express 监听的端口（见 server_fast.js：PORT 默认 3000，绑定 0.0.0.0）
@@ -39,7 +39,8 @@ export default {
   async fetch(request, env) {
     // 所有流量路由到同一个共享容器实例 "shared"：
     // 这样 downloads 目录、已预热的 Chromium、任务状态在所有请求间共享。
-    const container = env.VIDEO_CLEANER.getByName("shared");
+    // getContainer 是当前官方推荐的容器句柄获取方式（替代旧式 getByName）。
+    const container = getContainer(env.VIDEO_CLEANER, "shared");
     return container.fetch(request);
   },
 };

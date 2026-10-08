@@ -2,6 +2,15 @@ name = "video-cleaner"
 main = "worker.js"
 compatibility_date = "2026-10-07"
 
+# 你的 Cloudflare 账户 ID（从部署报错路径里可见：/accounts/<此ID>/containers/me）
+# 本地 wrangler deploy 时需要；Workers Builds 会自动使用连接账户的 ID。
+account_id = "afed256f7442d999a9f0916d0087528e"
+
+# ⚠️ 硬门槛：Cloudflare Containers 仅限 Workers Paid 付费计划（$5/月）。
+# 账户必须已升级 Workers Paid，且 containers.enabled 权限已生效，
+# 否则部署到 /accounts/<id>/containers/me 这一步会直接报
+# "A request to the Cloudflare API (/accounts/.../containers/me) failed"。
+
 # 容器定义：镜像 + 关联的 Durable Object 类
 [[containers]]
 class_name = "VideoCleaner"
